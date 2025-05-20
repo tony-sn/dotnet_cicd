@@ -1,0 +1,95 @@
+name: Main Branch CI/CD
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+
+env:
+  REGISTRY: ghcr.io
+  GATEWAY_IMAGE_NAME: ${{ github.repository }}/gateway-api
+  EMAIL_IMAGE_NAME: ${{ github.repository }}/email-service
+  AUTH_IMAGE_NAME: ${{ github.repository }}/auth-service
+
+jobs:
+  build-and-deploy:
+    if: github.event.pull_request.merged == true || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and test Gateway API
+        run: |
+          dotnet restore GatewayAPI/GatewayAPI.csproj
+          dotnet build GatewayAPI/GatewayAPI.csproj --configuration Release
+          # Add tests if you have them
+          # dotnet test GatewayAPI.Tests/GatewayAPI.Tests.csproj
+
+      - name: Build and test Email Service
+        run: |
+          dotnet restore EmailService/EmailService.csproj
+          dotnet build EmailService/EmailService.csproj --configuration Release
+          # Add tests if you have them
+          # dotnet test EmailService.Tests/EmailService.Tests.csproj
+
+      - name: Build and test Auth Service
+        run: |
+          dotnet restore AuthenticationService/AuthenticationService.csproj
+          dotnet build AuthenticationService/AuthenticationService.csproj --configuration Release
+          # Add tests if you have them
+          # dotnet test AuthService.Tests/AuthService.Tests.csproj
+
+      - name: Build and push Docker images
+        run: |
+          # Build and push Gateway API
+          docker build -t ${{ env.REGISTRY }}/${{ env.GATEWAY_IMAGE_NAME }}:${{ github.sha }} -t ${{ env.REGISTRY }}/${{ env.GATEWAY_IMAGE_NAME }}:latest ./GatewayAPI
+          docker push ${{ env.REGISTRY }}/${{ env.GATEWAY_IMAGE_NAME }}:${{ github.sha }}
+          docker push ${{ env.REGISTRY }}/${{ env.GATEWAY_IMAGE_NAME }}:latest
+
+          # Build and push Email Service
+          docker build -t ${{ env.REGISTRY }}/${{ env.EMAIL_IMAGE_NAME }}:${{ github.sha }} -t ${{ env.REGISTRY }}/${{ env.EMAIL_IMAGE_NAME }}:latest ./EmailService
+          docker push ${{ env.REGISTRY }}/${{ env.EMAIL_IMAGE_NAME }}:${{ github.sha }}
+          docker push ${{ env.REGISTRY }}/${{ env.EMAIL_IMAGE_NAME }}:latest
+
+          # Build and push Auth Service
+          docker build -t ${{ env.REGISTRY }}/${{ env.AUTH_IMAGE_NAME }}:${{ github.sha }} -t ${{ env.REGISTRY }}/${{ env.AUTH_IMAGE_NAME }}:latest ./AuthenticationService
+          docker push ${{ env.REGISTRY }}/${{ env.AUTH_IMAGE_NAME }}:${{ github.sha }}
+          docker push ${{ env.REGISTRY }}/${{ env.AUTH_IMAGE_NAME }}:latest
+
+      - name: Deploy to Digital Ocean
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.DIGITALOCEAN_HOST }}
+          username: ${{ secrets.DIGITALOCEAN_USERNAME }}
+          key: ${{ secrets.DIGITALOCEAN_SSH_KEY }}
+          script: |
+            # Pull latest images
+            docker pull ${{ env.REGISTRY }}/${{ env.GATEWAY_IMAGE_NAME }}:latest
+            docker pull ${{ env.REGISTRY }}/${{ env.EMAIL_IMAGE_NAME }}:latest
+            docker pull ${{ env.REGISTRY }}/${{ env.AUTH_IMAGE_NAME }}:latest
+
+            # Update docker-compose.yml with new image tags
+            cd /path/to/your/app
+            docker-compose down
+            docker-compose up -d 
