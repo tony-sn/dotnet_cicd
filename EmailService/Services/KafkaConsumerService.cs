@@ -11,7 +11,7 @@ namespace EmailService.Services {
 
         public KafkaConsumerService(IEmailService emailService, IConfiguration config) {
             // Lấy cấu hình Kafka từ IConfiguration
-            _bootstrapServers = config["Kafka:BootstrapServers"] ?? "kafka:29092";
+            _bootstrapServers = config["Kafka:BootstrapServers"] ?? "kafka:9092";
             Console.WriteLine($"Initializing Kafka consumer with bootstrap servers: {_bootstrapServers}");
             
             // config consumer
