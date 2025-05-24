@@ -56,5 +56,19 @@ namespace AuthenticationService.Service {
                 Email=user.Email
             };
         }
+
+        public async Task<AuthResponse?> Login(LoginDTO loginDTO) {
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == loginDTO.Email);
+            
+            if (user == null || user.PasswordHash != loginDTO.Password) {
+                return null; // Invalid credentials
+            }
+
+            return new AuthResponse {
+                Token = "test-login-token",
+                Username = user.Username,
+                Email = user.Email
+            };
+        }
     }
 }

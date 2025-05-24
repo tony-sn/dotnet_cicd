@@ -1,6 +1,7 @@
 using AuthenticationService.Data;
 using AuthenticationService.Service;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -9,7 +10,58 @@ var builder = WebApplication.CreateBuilder(args);
 // builder.Services.AddOpenApi();
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+
+// Configure Swagger with proper API info
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "Authentication Service API",
+        Version = "v1",
+        Description = "Microservice for user authentication and management",
+        Contact = new OpenApiContact
+        {
+            Name = "Development Team",
+            Email = "dev@company.com"
+        }
+    });
+    
+    // Enable annotations
+    c.EnableAnnotations();
+    
+    // Include XML documentation
+    var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
+    var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+    if (File.Exists(xmlPath))
+    {
+        c.IncludeXmlComments(xmlPath);
+    }
+    
+    // Add JWT Bearer authentication to Swagger
+    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Description = "JWT Authorization header using the Bearer scheme. Enter 'Bearer' [space] and then your token in the text input below.",
+        Name = "Authorization",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.ApiKey,
+        Scheme = "Bearer"
+    });
+    
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
+});
 
 // Add health checks
 builder.Services.AddHealthChecks();
@@ -21,7 +73,8 @@ builder.Services.AddDbContext<AuthDbContext>(options =>
 
 // add HttpClient for EmailService
 builder.Services.AddHttpClient("EmailService", client => {
-    client.BaseAddress = new Uri(builder.Configuration["Services:EmailService"]);
+    var emailServiceUrl = builder.Configuration["Services:EmailService"] ?? "http://email-service:80";
+    client.BaseAddress = new Uri(emailServiceUrl);
 });
 
 // add service
@@ -33,10 +86,13 @@ builder.Services.AddSingleton<KafkaProducerService>();
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
+// Enable Swagger based on environment or ENABLE_SWAGGER environment variable
+var enableSwagger = app.Environment.IsDevelopment() || 
+                   bool.Parse(app.Configuration.GetValue<string>("ENABLE_SWAGGER") ?? "false");
+
+if (enableSwagger)
 {
     app.UseSwagger();
-    // app.MapOpenApi();
     app.UseSwaggerUI();
 }
 
@@ -46,28 +102,4 @@ app.MapHealthChecks("/health");
 app.UseHttpsRedirection();
 app.MapControllers();
 
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
-
-app.MapGet("/weatherforecast", () =>
-{
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast");
-
 app.Run();
-
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}

@@ -127,6 +127,7 @@ jobs:
               --network ${{ env.NETWORK_NAME }} \
               -p ${{ env.AUTH_PORT }}:80 \
               -e ASPNETCORE_ENVIRONMENT=Production \
+              -e ENABLE_SWAGGER=true \
               -e "ConnectionStrings__DefaultConnection=Server=sqlserver-microservices${{ env.CONTAINER_SUFFIX }},1433;Database=AuthDB;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true" \
               -e Kafka__BootstrapServers=kafka-microservices${{ env.CONTAINER_SUFFIX }}:9092 \
               --restart unless-stopped \
@@ -177,6 +178,13 @@ jobs:
             echo "Email Service Health (port ${{ env.EMAIL_PORT }}):"
             curl -s http://localhost:${{ env.EMAIL_PORT }}/health && echo " - OK" || echo " - FAILED"
             
+            # Test Swagger endpoints for Auth Service
+            echo "=== Swagger Check Results for ${{ github.event.inputs.environment }} ==="
+            echo "Auth Service Swagger JSON (port ${{ env.AUTH_PORT }}):"
+            curl -s http://localhost:${{ env.AUTH_PORT }}/swagger/v1/swagger.json | head -1 && echo " - Swagger JSON OK" || echo " - Swagger JSON FAILED"
+            echo "Auth Service API Ping (port ${{ env.AUTH_PORT }}):"
+            curl -s http://localhost:${{ env.AUTH_PORT }}/api/auth/ping && echo " - API OK" || echo " - API FAILED"
+            
             # Show recent logs
             echo "=== Recent Logs for ${{ github.event.inputs.environment }} ==="
             echo "Auth Service logs:"
@@ -187,7 +195,9 @@ jobs:
             docker logs gateway-api${{ env.CONTAINER_SUFFIX }} --tail=5 2>/dev/null || echo "No logs available"
             
             echo "=== DEPLOYMENT TO ${{ github.event.inputs.environment }} COMPLETE ==="
-            echo "Access URLs:"
+            echo "=== ACCESS URLS ==="
             echo "Gateway API: http://159.223.68.114:${{ env.GATEWAY_PORT }}"
             echo "Auth Service: http://159.223.68.114:${{ env.AUTH_PORT }}"
-            echo "Email Service: http://159.223.68.114:${{ env.EMAIL_PORT }}" 
+            echo "Auth Service Swagger: http://159.223.68.114:${{ env.AUTH_PORT }}/swagger"
+            echo "Email Service: http://159.223.68.114:${{ env.EMAIL_PORT }}"
+            echo "=== Swagger UI Available at: http://159.223.68.114:${{ env.AUTH_PORT }}/swagger ===" 

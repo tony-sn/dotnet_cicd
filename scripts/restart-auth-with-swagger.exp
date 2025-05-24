@@ -1,0 +1,86 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+set host "159.223.68.114"
+set user "root"
+set password "pHuong@123dotnet"
+
+spawn ssh $user@$host
+
+expect {
+    "yes/no" { 
+        send "yes\r"
+        expect "*password*" { send "$password\r" }
+    }
+    "*password*" { 
+        send "$password\r" 
+    }
+}
+
+expect "# "
+
+send "echo '=== RESTARTING AUTH SERVICE WITH SWAGGER ==='\r"
+expect "# "
+
+send "echo 'Stopping current auth-service...'\r"
+expect "# "
+
+send "docker stop auth-service\r"
+expect "# "
+
+send "docker rm auth-service\r"
+expect "# "
+
+send "echo 'Starting auth-service with Swagger enabled...'\r"
+expect "# "
+
+send "docker run -d --name auth-service --network microservices-network -p 5001:80 -e ASPNETCORE_ENVIRONMENT=Production -e ENABLE_SWAGGER=true -e 'ConnectionStrings__DefaultConnection=Server=sqlserver-microservices,1433;Database=AuthDB;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true' -e Kafka__BootstrapServers=kafka-microservices:9092 --restart unless-stopped ghcr.io/duyphuongkhtn/dotnet_cicd/auth-service:latest\r"
+expect "# "
+
+send "echo 'Waiting for service to start...'\r"
+expect "# "
+
+send "sleep 15\r"
+expect "# "
+
+send "echo 'Checking container status:'\r"
+expect "# "
+
+send "docker ps | grep auth-service\r"
+expect "# "
+
+send "echo 'Testing health:'\r"
+expect "# "
+
+send "curl -s http://localhost:5001/health\r"
+expect "# "
+
+send "echo 'Testing Swagger:'\r"
+expect "# "
+
+send "curl -s -I http://localhost:5001/swagger/ | head -1\r"
+expect "# "
+
+send "echo 'Environment variables:'\r"
+expect "# "
+
+send "docker exec auth-service env | grep ENABLE_SWAGGER\r"
+expect "# "
+
+send "echo 'AUTH SERVICE WITH SWAGGER READY!'\r"
+expect "# "
+
+send "echo 'Access URLs:'\r"
+expect "# "
+
+send "echo 'Swagger UI: http://159.223.68.114:5001/swagger'\r"
+expect "# "
+
+send "echo 'Health Check: http://159.223.68.114:5001/health'\r"
+expect "# "
+
+send "echo 'API Ping: http://159.223.68.114:5001/api/auth/ping'\r"
+expect "# "
+
+send "exit\r"
+expect eof 

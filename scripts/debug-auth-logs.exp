@@ -1,0 +1,77 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+set host "159.223.68.114"
+set user "root"
+set password "pHuong@123dotnet"
+
+spawn ssh $user@$host
+
+expect {
+    "yes/no" { 
+        send "yes\r"
+        expect "*password*" { send "$password\r" }
+    }
+    "*password*" { 
+        send "$password\r" 
+    }
+}
+
+expect "# "
+
+send "echo '=== DEBUGGING AUTH SERVICE ==='\r"
+expect "# "
+
+send "echo 'Container status:'\r"
+expect "# "
+
+send "docker ps -a | grep auth-service\r"
+expect "# "
+
+send "echo 'Container logs (last 20 lines):'\r"
+expect "# "
+
+send "docker logs --tail 20 auth-service\r"
+expect "# "
+
+send "echo 'Environment variables:'\r"
+expect "# "
+
+send "docker exec auth-service env | grep -E '(ENABLE_SWAGGER|ASPNETCORE|Connection)'\r"
+expect "# "
+
+send "echo 'Testing container connectivity:'\r"
+expect "# "
+
+send "docker exec auth-service netstat -tuln\r"
+expect "# "
+
+send "echo 'Testing internal health:'\r"
+expect "# "
+
+send "docker exec auth-service curl -s http://localhost:80/health || echo 'Internal health failed'\r"
+expect "# "
+
+send "echo 'Testing internal API:'\r"
+expect "# "
+
+send "docker exec auth-service curl -s http://localhost:80/api/auth/ping || echo 'Internal ping failed'\r"
+expect "# "
+
+send "echo 'Testing internal Swagger:'\r"
+expect "# "
+
+send "docker exec auth-service curl -s -I http://localhost:80/swagger/ | head -1 || echo 'Internal swagger failed'\r"
+expect "# "
+
+send "echo 'Process list inside container:'\r"
+expect "# "
+
+send "docker exec auth-service ps aux\r"
+expect "# "
+
+send "echo 'DEBUG COMPLETE!'\r"
+expect "# "
+
+send "exit\r"
+expect eof 

@@ -1,0 +1,122 @@
+#!/usr/bin/expect -f
+
+set timeout 300
+set host "159.223.68.114"
+set user "root"
+set password "pHuong@123dotnet"
+
+spawn scp auth-service-fixed.tar $user@$host:/tmp/
+
+expect {
+    "yes/no" { 
+        send "yes\r"
+        expect "*password*" { send "$password\r" }
+    }
+    "*password*" { 
+        send "$password\r" 
+    }
+}
+
+expect {
+    "auth-service-fixed.tar" { puts "Upload successful" }
+    timeout { puts "Upload timeout" }
+    eof { puts "Upload completed" }
+}
+
+spawn ssh $user@$host
+
+expect {
+    "yes/no" { 
+        send "yes\r"
+        expect "*password*" { send "$password\r" }
+    }
+    "*password*" { 
+        send "$password\r" 
+    }
+}
+
+expect "# "
+
+send "echo '=== UPLOADING AND TESTING FIXED AUTH SERVICE ==='\r"
+expect "# "
+
+send "echo 'Stopping current auth-service...'\r"
+expect "# "
+
+send "docker stop auth-service || echo 'No existing container'\r"
+expect "# "
+
+send "docker rm auth-service || echo 'No existing container'\r"
+expect "# "
+
+send "echo 'Loading fixed auth-service image...'\r"
+expect "# "
+
+send "docker load -i /tmp/auth-service-fixed.tar\r"
+expect "# "
+
+send "echo 'Starting auth-service with fixes and Swagger enabled...'\r"
+expect "# "
+
+send "docker run -d --name auth-service --network microservices-network -p 5001:80 -e ASPNETCORE_ENVIRONMENT=Production -e ENABLE_SWAGGER=true -e 'ConnectionStrings__DefaultConnection=Server=sqlserver-microservices,1433;Database=AuthDB;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true' -e Kafka__BootstrapServers=kafka-microservices:9092 --restart unless-stopped ghcr.io/duyphuongkhtn/dotnet_cicd/auth-service:latest\r"
+expect "# "
+
+send "echo 'Waiting for service to start...'\r"
+expect "# "
+
+send "sleep 15\r"
+expect "# "
+
+send "echo 'Checking container status:'\r"
+expect "# "
+
+send "docker ps | grep auth-service\r"
+expect "# "
+
+send "echo 'Testing health endpoint:'\r"
+expect "# "
+
+send "curl -s http://localhost:5001/health\r"
+expect "# "
+
+send "echo 'Testing API ping endpoint:'\r"
+expect "# "
+
+send "curl -s http://localhost:5001/api/auth/ping\r"
+expect "# "
+
+send "echo 'Testing Swagger endpoint:'\r"
+expect "# "
+
+send "curl -s -I http://localhost:5001/swagger/ | head -1\r"
+expect "# "
+
+send "echo 'Testing Swagger JSON:'\r"
+expect "# "
+
+send "curl -s http://localhost:5001/swagger/v1/swagger.json | grep title\r"
+expect "# "
+
+send "echo 'FIXED AUTH SERVICE WITH SWAGGER IS READY!'\r"
+expect "# "
+
+send "echo 'Test URLs from outside:'\r"
+expect "# "
+
+send "echo 'Health: http://159.223.68.114:5001/health'\r"
+expect "# "
+
+send "echo 'API Ping: http://159.223.68.114:5001/api/auth/ping'\r"
+expect "# "
+
+send "echo 'Swagger UI: http://159.223.68.114:5001/swagger'\r"
+expect "# "
+
+send "echo 'Cleaning up...'\r"
+expect "# "
+
+send "rm /tmp/auth-service-fixed.tar\r"
+expect "# "
+
+send "exit\r"
+expect eof 

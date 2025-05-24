@@ -52,7 +52,7 @@ expect "# "
 send "echo 'Starting Auth Service...'\r"
 expect "# "
 
-send "docker run -d --name auth-service --network microservices-network -p 5001:80 -e ASPNETCORE_ENVIRONMENT=Production -e 'ConnectionStrings__DefaultConnection=Server=sqlserver-microservices,1433;Database=AuthDB;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true' -e Kafka__BootstrapServers=kafka-microservices:9092 --restart unless-stopped ghcr.io/duyphuongkhtn/dotnet_cicd/auth-service:latest\r"
+send "docker run -d --name auth-service --network microservices-network -p 5001:80 -e ASPNETCORE_ENVIRONMENT=Production -e ENABLE_SWAGGER=true -e 'ConnectionStrings__DefaultConnection=Server=sqlserver-microservices,1433;Database=AuthDB;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true' -e Kafka__BootstrapServers=kafka-microservices:9092 --restart unless-stopped ghcr.io/duyphuongkhtn/dotnet_cicd/auth-service:latest\r"
 expect "# "
 
 send "echo 'Starting Email Service...'\r"

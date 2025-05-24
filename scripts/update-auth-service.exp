@@ -1,0 +1,104 @@
+#!/usr/bin/expect -f
+
+set timeout 120
+set host "159.223.68.114"
+set user "root"
+set password "pHuong@123dotnet"
+
+spawn ssh $user@$host
+
+expect {
+    "yes/no" { 
+        send "yes\r"
+        expect "*password*" { send "$password\r" }
+    }
+    "*password*" { 
+        send "$password\r" 
+    }
+}
+
+expect "# "
+
+send "echo '=== UPDATING AUTH SERVICE WITH FIXES ==='\r"
+expect "# "
+
+send "echo 'Stopping current auth-service...'\r"
+expect "# "
+
+send "docker stop auth-service || echo 'No existing container'\r"
+expect "# "
+
+send "docker rm auth-service || echo 'No existing container'\r"
+expect "# "
+
+send "echo 'Pulling latest auth-service image...'\r"
+expect "# "
+
+send "docker pull ghcr.io/duyphuongkhtn/dotnet_cicd/auth-service:latest\r"
+expect "# "
+
+send "echo 'Starting auth-service with fixes and Swagger enabled...'\r"
+expect "# "
+
+send "docker run -d --name auth-service --network microservices-network -p 5001:80 -e ASPNETCORE_ENVIRONMENT=Production -e ENABLE_SWAGGER=true -e 'ConnectionStrings__DefaultConnection=Server=sqlserver-microservices,1433;Database=AuthDB;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true' -e Kafka__BootstrapServers=kafka-microservices:9092 --restart unless-stopped ghcr.io/duyphuongkhtn/dotnet_cicd/auth-service:latest\r"
+expect "# "
+
+send "echo 'Waiting for service to start...'\r"
+expect "# "
+
+send "sleep 20\r"
+expect "# "
+
+send "echo 'Checking container status:'\r"
+expect "# "
+
+send "docker ps | grep auth-service\r"
+expect "# "
+
+send "echo 'Checking container logs for errors:'\r"
+expect "# "
+
+send "docker logs --tail 10 auth-service\r"
+expect "# "
+
+send "echo 'Testing health endpoint:'\r"
+expect "# "
+
+send "curl -s http://localhost:5001/health || echo 'Health check failed'\r"
+expect "# "
+
+send "echo 'Testing API ping endpoint:'\r"
+expect "# "
+
+send "curl -s http://localhost:5001/api/auth/ping || echo 'Ping failed'\r"
+expect "# "
+
+send "echo 'Testing Swagger endpoint:'\r"
+expect "# "
+
+send "curl -s -I http://localhost:5001/swagger/ | head -1 || echo 'Swagger failed'\r"
+expect "# "
+
+send "echo 'Testing Swagger JSON:'\r"
+expect "# "
+
+send "curl -s http://localhost:5001/swagger/v1/swagger.json | head -1 || echo 'Swagger JSON failed'\r"
+expect "# "
+
+send "echo 'UPDATED AUTH SERVICE READY!'\r"
+expect "# "
+
+send "echo 'Test URLs:'\r"
+expect "# "
+
+send "echo 'Health: http://159.223.68.114:5001/health'\r"
+expect "# "
+
+send "echo 'API Ping: http://159.223.68.114:5001/api/auth/ping'\r"
+expect "# "
+
+send "echo 'Swagger UI: http://159.223.68.114:5001/swagger'\r"
+expect "# "
+
+send "exit\r"
+expect eof 
