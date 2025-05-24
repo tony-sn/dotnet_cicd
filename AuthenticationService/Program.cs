@@ -11,6 +11,9 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+// Add health checks
+builder.Services.AddHealthChecks();
+
 // Configure DbContext
 builder.Services.AddDbContext<AuthDbContext>(options => 
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"))
@@ -36,6 +39,9 @@ if (app.Environment.IsDevelopment())
     // app.MapOpenApi();
     app.UseSwaggerUI();
 }
+
+// Add health check endpoint
+app.MapHealthChecks("/health");
 
 app.UseHttpsRedirection();
 app.MapControllers();

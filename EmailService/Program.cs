@@ -9,6 +9,9 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+// Add health checks
+builder.Services.AddHealthChecks();
+
 // add EmailService
 builder.Services.AddSingleton<IEmailService,EmailService.Services.EmailService>();
 
@@ -24,6 +27,9 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+// Add health check endpoint
+app.MapHealthChecks("/health");
 
 app.UseHttpsRedirection();
 app.MapControllers();

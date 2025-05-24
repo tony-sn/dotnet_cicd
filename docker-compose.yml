@@ -1,0 +1,108 @@
+version: '3.8'
+
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: sqlserver-local
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=YourStrong@Passw0rd
+      - MSSQL_PID=Express
+    ports:
+      - "1433:1433"
+    networks:
+      - microservices-network
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+    restart: unless-stopped
+
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    container_name: kafka-local
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENERS: PLAINTEXT://kafka:9092,CONTROLLER://kafka:29093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_NUM_PARTITIONS: 3
+    ports:
+      - "9092:9092"
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  kafka-init:
+    image: confluentinc/cp-kafka:latest
+    container_name: kafka-init-local
+    depends_on:
+      - kafka
+    networks:
+      - microservices-network
+    entrypoint: ["/bin/sh", "-c"]
+    command: |
+      "
+      echo 'Waiting for Kafka to be ready...'
+      sleep 30
+      kafka-topics --create --topic user-registered --bootstrap-server kafka:9092 --replication-factor 1 --partitions 1 --if-not-exists
+      echo 'Topic user-registered created successfully'
+      "
+
+  auth-service:
+    build: ./AuthenticationService
+    container_name: auth-service-local
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=Server=sqlserver,1433;Database=AuthDB;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true
+      - Kafka__BootstrapServers=kafka:9092
+    ports:
+      - "5001:80"
+    depends_on:
+      - sqlserver
+      - kafka
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  email-service:
+    build: ./EmailService
+    container_name: email-service-local
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - Kafka__BootstrapServers=kafka:9092
+    ports:
+      - "5002:80"
+    depends_on:
+      - kafka
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  gateway-api:
+    build: ./GatewayAPI
+    container_name: gateway-api-local
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - Services__AuthService=http://auth-service:80
+      - Services__EmailService=http://email-service:80
+    ports:
+      - "5000:80"
+    depends_on:
+      - auth-service
+      - email-service
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+networks:
+  microservices-network:
+    driver: bridge
+
+volumes:
+  sqlserver_data: 

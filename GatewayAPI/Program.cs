@@ -4,6 +4,9 @@ var builder = WebApplication.CreateBuilder(args);
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 
+// Add health checks
+builder.Services.AddHealthChecks();
+
 // add YARP
 builder.Services.AddReverseProxy().LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
 
@@ -29,6 +32,9 @@ if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
+
+// Add health check endpoint
+app.MapHealthChecks("/health");
 
 app.UseCors("AllowAll");
 
