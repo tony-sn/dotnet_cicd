@@ -69,18 +69,25 @@ jobs:
             # Login to GitHub Container Registry
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             
+            # Stop and remove existing containers for this environment
+            echo "Stopping existing ${{ github.event.inputs.environment }} containers..."
+            docker stop sqlserver-microservices${{ env.CONTAINER_SUFFIX }} kafka-microservices${{ env.CONTAINER_SUFFIX }} auth-service${{ env.CONTAINER_SUFFIX }} email-service${{ env.CONTAINER_SUFFIX }} gateway-api${{ env.CONTAINER_SUFFIX }} 2>/dev/null || true
+            docker rm sqlserver-microservices${{ env.CONTAINER_SUFFIX }} kafka-microservices${{ env.CONTAINER_SUFFIX }} auth-service${{ env.CONTAINER_SUFFIX }} email-service${{ env.CONTAINER_SUFFIX }} gateway-api${{ env.CONTAINER_SUFFIX }} 2>/dev/null || true
+            
+            # Remove old microservice images to ensure fresh deployment
+            echo "Removing old microservice images for ${{ github.event.inputs.environment }}..."
+            docker rmi ${{ env.GATEWAY_IMAGE_NAME_LOWER }}:latest 2>/dev/null || echo "Gateway image not found"
+            docker rmi ${{ env.EMAIL_IMAGE_NAME_LOWER }}:latest 2>/dev/null || echo "Email image not found"
+            docker rmi ${{ env.AUTH_IMAGE_NAME_LOWER }}:latest 2>/dev/null || echo "Auth image not found"
+            
             # Pull latest images
+            echo "Pulling latest images for ${{ github.event.inputs.environment }}..."
             docker pull ${{ env.GATEWAY_IMAGE_NAME_LOWER }}:latest
             docker pull ${{ env.EMAIL_IMAGE_NAME_LOWER }}:latest
             docker pull ${{ env.AUTH_IMAGE_NAME_LOWER }}:latest
             
             # Create docker network
             docker network create ${{ env.NETWORK_NAME }} 2>/dev/null || echo "Network already exists"
-            
-            # Stop and remove existing containers for this environment
-            echo "Stopping existing ${{ github.event.inputs.environment }} containers..."
-            docker stop sqlserver-microservices${{ env.CONTAINER_SUFFIX }} kafka-microservices${{ env.CONTAINER_SUFFIX }} auth-service${{ env.CONTAINER_SUFFIX }} email-service${{ env.CONTAINER_SUFFIX }} gateway-api${{ env.CONTAINER_SUFFIX }} 2>/dev/null || true
-            docker rm sqlserver-microservices${{ env.CONTAINER_SUFFIX }} kafka-microservices${{ env.CONTAINER_SUFFIX }} auth-service${{ env.CONTAINER_SUFFIX }} email-service${{ env.CONTAINER_SUFFIX }} gateway-api${{ env.CONTAINER_SUFFIX }} 2>/dev/null || true
             
             # Start SQL Server
             echo "Starting SQL Server for ${{ github.event.inputs.environment }}..."
@@ -200,4 +207,9 @@ jobs:
             echo "Auth Service: http://159.223.68.114:${{ env.AUTH_PORT }}"
             echo "Auth Service Swagger: http://159.223.68.114:${{ env.AUTH_PORT }}/swagger"
             echo "Email Service: http://159.223.68.114:${{ env.EMAIL_PORT }}"
-            echo "=== Swagger UI Available at: http://159.223.68.114:${{ env.AUTH_PORT }}/swagger ===" 
+            echo "=== Swagger UI Available at: http://159.223.68.114:${{ env.AUTH_PORT }}/swagger ==="
+            
+            # Cleanup unused Docker images to free up space
+            echo "=== Cleaning up unused Docker images ==="
+            docker image prune -f || echo "No unused images to remove"
+            docker system df || echo "Unable to show disk usage" 
