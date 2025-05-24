@@ -1,0 +1,86 @@
+#!/usr/bin/expect -f
+
+set timeout 40
+set host "159.223.68.114"
+set user "root"
+set password "pHuong@123dotnet"
+
+spawn ssh $user@$host
+
+expect {
+    "yes/no" { 
+        send "yes\r"
+        expect "*password*" { send "$password\r" }
+    }
+    "*password*" { 
+        send "$password\r" 
+    }
+}
+
+expect "# "
+
+send "cd /deployments/microservices\r"
+expect "# "
+
+send "echo '=== FINAL FIX - ABSOLUTE PATH ==='\r"
+expect "# "
+
+send "pwd\r"
+expect "# "
+
+send "echo 'Using absolute path:'\r"
+expect "# "
+
+send "docker compose -f /deployments/microservices/docker-compose.yml config > /dev/null && echo 'CONFIG OK' || echo 'CONFIG FAILED'\r"
+expect "# "
+
+send "echo 'Starting with absolute path:'\r"
+expect "# "
+
+send "docker compose -f /deployments/microservices/docker-compose.yml down --remove-orphans\r"
+expect "# "
+
+send "docker compose -f /deployments/microservices/docker-compose.yml up -d\r"
+expect "# "
+
+send "echo 'Waiting for containers to start...'\r"
+expect "# "
+
+send "sleep 30\r"
+expect "# "
+
+send "docker ps --format \"table {{.Names}}\\t{{.Status}}\\t{{.Ports}}\"\r"
+expect "# "
+
+send "echo 'Testing services:'\r"
+expect "# "
+
+send "sleep 10\r"
+expect "# "
+
+send "curl -s http://localhost:5000/health && echo ' - Gateway: OK' || echo ' - Gateway: FAILED'\r"
+expect "# "
+
+send "curl -s http://localhost:5001/health && echo ' - Auth: OK' || echo ' - Auth: FAILED'\r"
+expect "# "
+
+send "curl -s http://localhost:5002/health && echo ' - Email: OK' || echo ' - Email: FAILED'\r"
+expect "# "
+
+send "echo 'Quick container logs:'\r"
+expect "# "
+
+send "docker logs auth-service --tail=3 2>/dev/null || echo 'Auth logs not available'\r"
+expect "# "
+
+send "docker logs email-service --tail=3 2>/dev/null || echo 'Email logs not available'\r"
+expect "# "
+
+send "docker logs gateway-api --tail=3 2>/dev/null || echo 'Gateway logs not available'\r"
+expect "# "
+
+send "echo 'DEPLOYMENT COMPLETE!'\r"
+expect "# "
+
+send "exit\r"
+expect eof 

@@ -1,0 +1,154 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+set host "159.223.68.114"
+set user "root"
+set password "pHuong@123dotnet"
+
+spawn ssh $user@$host
+
+expect {
+    "yes/no" { 
+        send "yes\r"
+        expect "*password*" { send "$password\r" }
+    }
+    "*password*" { 
+        send "$password\r" 
+    }
+}
+
+expect "# "
+
+send "cd /deployments/microservices\r"
+expect "# "
+
+send "echo '=== RECREATING COMPOSE FILE ==='\r"
+expect "# "
+
+send "rm -f docker-compose.yml\r"
+expect "# "
+
+send "cat > docker-compose.yml << 'EOF'\r"
+
+send "version: '3.8'\r"
+send "\r"
+send "services:\r"
+send "  sqlserver:\r"
+send "    image: mcr.microsoft.com/mssql/server:2022-latest\r"
+send "    container_name: sqlserver-microservices\r"
+send "    environment:\r"
+send "      - ACCEPT_EULA=Y\r"
+send "      - SA_PASSWORD=YourStrong@Passw0rd\r"
+send "      - MSSQL_PID=Express\r"
+send "    ports:\r"
+send "      - \"1433:1433\"\r"
+send "    networks:\r"
+send "      - microservices-network\r"
+send "    volumes:\r"
+send "      - sqlserver_data:/var/opt/mssql\r"
+send "    restart: unless-stopped\r"
+send "\r"
+send "  kafka:\r"
+send "    image: confluentinc/cp-kafka:latest\r"
+send "    container_name: kafka-microservices\r"
+send "    environment:\r"
+send "      KAFKA_NODE_ID: 1\r"
+send "      KAFKA_PROCESS_ROLES: broker,controller\r"
+send "      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093\r"
+send "      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER\r"
+send "      KAFKA_LISTENERS: PLAINTEXT://kafka:9092,CONTROLLER://kafka:29093\r"
+send "      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092\r"
+send "      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT\r"
+send "      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1\r"
+send "      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1\r"
+send "      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1\r"
+send "      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0\r"
+send "      KAFKA_NUM_PARTITIONS: 3\r"
+send "    ports:\r"
+send "      - \"9092:9092\"\r"
+send "    networks:\r"
+send "      - microservices-network\r"
+send "    restart: unless-stopped\r"
+send "\r"
+send "  auth-service:\r"
+send "    image: ghcr.io/duyphuongkhtn/dotnet_cicd/auth-service:latest\r"
+send "    container_name: auth-service\r"
+send "    environment:\r"
+send "      - ASPNETCORE_ENVIRONMENT=Production\r"
+send "      - ConnectionStrings__DefaultConnection=Server=sqlserver,1433;Database=AuthDB;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true\r"
+send "      - Kafka__BootstrapServers=kafka:9092\r"
+send "    ports:\r"
+send "      - \"5001:80\"\r"
+send "    depends_on:\r"
+send "      - sqlserver\r"
+send "      - kafka\r"
+send "    networks:\r"
+send "      - microservices-network\r"
+send "    restart: unless-stopped\r"
+send "\r"
+send "  email-service:\r"
+send "    image: ghcr.io/duyphuongkhtn/dotnet_cicd/email-service:latest\r"
+send "    container_name: email-service\r"
+send "    environment:\r"
+send "      - ASPNETCORE_ENVIRONMENT=Production\r"
+send "      - Kafka__BootstrapServers=kafka:9092\r"
+send "    ports:\r"
+send "      - \"5002:80\"\r"
+send "    depends_on:\r"
+send "      - kafka\r"
+send "    networks:\r"
+send "      - microservices-network\r"
+send "    restart: unless-stopped\r"
+send "\r"
+send "  gateway-api:\r"
+send "    image: ghcr.io/duyphuongkhtn/dotnet_cicd/gateway-api:latest\r"
+send "    container_name: gateway-api\r"
+send "    environment:\r"
+send "      - ASPNETCORE_ENVIRONMENT=Production\r"
+send "      - Services__AuthService=http://auth-service:80\r"
+send "      - Services__EmailService=http://email-service:80\r"
+send "    ports:\r"
+send "      - \"5000:80\"\r"
+send "    depends_on:\r"
+send "      - auth-service\r"
+send "      - email-service\r"
+send "    networks:\r"
+send "      - microservices-network\r"
+send "    restart: unless-stopped\r"
+send "\r"
+send "networks:\r"
+send "  microservices-network:\r"
+send "    driver: bridge\r"
+send "\r"
+send "volumes:\r"
+send "  sqlserver_data:\r"
+send "EOF\r"
+
+expect "# "
+
+send "echo 'Testing new file:'\r"
+expect "# "
+
+send "docker compose config > /dev/null && echo 'SUCCESS' || echo 'FAILED'\r"
+expect "# "
+
+send "echo 'Starting services:'\r"
+expect "# "
+
+send "docker compose up -d\r"
+expect "# "
+
+send "echo 'Waiting...'\r"
+expect "# "
+
+send "sleep 20\r"
+expect "# "
+
+send "docker ps --format \"table {{.Names}}\\t{{.Status}}\"\r"
+expect "# "
+
+send "echo 'DONE'\r"
+expect "# "
+
+send "exit\r"
+expect eof 

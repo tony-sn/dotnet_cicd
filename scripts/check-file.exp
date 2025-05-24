@@ -1,0 +1,44 @@
+#!/usr/bin/expect -f
+
+set timeout 20
+set host "159.223.68.114"
+set user "root"
+set password "pHuong@123dotnet"
+
+spawn ssh $user@$host
+
+expect {
+    "yes/no" { 
+        send "yes\r"
+        expect "*password*" { send "$password\r" }
+    }
+    "*password*" { 
+        send "$password\r" 
+    }
+}
+
+expect "# "
+
+send "cd /deployments/microservices\r"
+expect "# "
+
+send "echo '=== FILE CHECK ==='\r"
+expect "# "
+
+send "ls -la\r"
+expect "# "
+
+send "echo '=== FILE CONTENT ==='\r"
+expect "# "
+
+send "cat docker-compose.yml\r"
+expect "# "
+
+send "echo '=== CONFIG TEST ==='\r"
+expect "# "
+
+send "docker-compose config\r"
+expect "# "
+
+send "exit\r"
+expect eof 

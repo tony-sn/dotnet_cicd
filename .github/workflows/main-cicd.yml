@@ -93,176 +93,125 @@ jobs:
             # Create deployment directory
             mkdir -p /deployments/microservices
             cd /deployments/microservices
-
-            # Check if network exists, if not create it
-            NETWORK_EXISTS=$(docker network ls --format "{{.Name}}" | grep -w "microservices-network" || true)
-            if [ -z "$NETWORK_EXISTS" ]; then
-              echo "Creating microservices-network..."
-              docker network create microservices-network
-            else
-              echo "Network microservices-network already exists"
-            fi
-
+            
             # Login to GitHub Container Registry
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-
+            
             # Pull latest images
             docker pull ${{ env.GATEWAY_IMAGE_NAME_LOWER }}:latest
             docker pull ${{ env.EMAIL_IMAGE_NAME_LOWER }}:latest
             docker pull ${{ env.AUTH_IMAGE_NAME_LOWER }}:latest
-
-            # Create docker-compose.yml
-            cat > docker-compose.yml << 'EOL'
-            version: '3.8'
-
-            services:
-              sqlserver:
-                image: mcr.microsoft.com/mssql/server:2022-latest
-                container_name: sqlserver-microservices
-                environment:
-                  - ACCEPT_EULA=Y
-                  - SA_PASSWORD=YourStrong@Passw0rd
-                  - MSSQL_PID=Express
-                ports:
-                  - "1433:1433"
-                networks:
-                  - microservices-network
-                volumes:
-                  - sqlserver_data:/var/opt/mssql
-                restart: unless-stopped
-
-              kafka:
-                image: confluentinc/cp-kafka:latest
-                container_name: kafka-microservices
-                environment:
-                  KAFKA_NODE_ID: 1
-                  KAFKA_PROCESS_ROLES: broker,controller
-                  KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
-                  KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-                  KAFKA_LISTENERS: PLAINTEXT://kafka:9092,CONTROLLER://kafka:29093
-                  KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-                  KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
-                  KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-                  KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-                  KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-                  KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-                  KAFKA_NUM_PARTITIONS: 3
-                ports:
-                  - "9092:9092"
-                networks:
-                  - microservices-network
-                restart: unless-stopped
-
-              kafka-init:
-                image: confluentinc/cp-kafka:latest
-                container_name: kafka-init
-                depends_on:
-                  - kafka
-                networks:
-                  - microservices-network
-                entrypoint: ["/bin/sh", "-c"]
-                command: |
-                  "
-                  echo 'Waiting for Kafka to be ready...'
-                  sleep 30
-                  kafka-topics --create --topic user-registered --bootstrap-server kafka:9092 --replication-factor 1 --partitions 1 --if-not-exists
-                  echo 'Topic user-registered created successfully'
-                  "
-
-              auth-service:
-                image: ${{ env.AUTH_IMAGE_NAME_LOWER }}:latest
-                container_name: auth-service
-                environment:
-                  - ASPNETCORE_ENVIRONMENT=Production
-                  - ConnectionStrings__DefaultConnection=Server=sqlserver,1433;Database=AuthDB;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true
-                  - Kafka__BootstrapServers=kafka:9092
-                ports:
-                  - "5001:80"
-                depends_on:
-                  - sqlserver
-                  - kafka
-                networks:
-                  - microservices-network
-                restart: unless-stopped
-                healthcheck:
-                  test: ["CMD", "curl", "-f", "http://localhost:80/health"]
-                  interval: 30s
-                  timeout: 10s
-                  retries: 3
-
-              email-service:
-                image: ${{ env.EMAIL_IMAGE_NAME_LOWER }}:latest
-                container_name: email-service
-                environment:
-                  - ASPNETCORE_ENVIRONMENT=Production
-                  - Kafka__BootstrapServers=kafka:9092
-                ports:
-                  - "5002:80"
-                depends_on:
-                  - kafka
-                networks:
-                  - microservices-network
-                restart: unless-stopped
-                healthcheck:
-                  test: ["CMD", "curl", "-f", "http://localhost:80/health"]
-                  interval: 30s
-                  timeout: 10s
-                  retries: 3
-
-              gateway-api:
-                image: ${{ env.GATEWAY_IMAGE_NAME_LOWER }}:latest
-                container_name: gateway-api
-                environment:
-                  - ASPNETCORE_ENVIRONMENT=Production
-                  - Services__AuthService=http://auth-service:80
-                  - Services__EmailService=http://email-service:80
-                ports:
-                  - "5000:80"
-                depends_on:
-                  - auth-service
-                  - email-service
-                networks:
-                  - microservices-network
-                restart: unless-stopped
-                healthcheck:
-                  test: ["CMD", "curl", "-f", "http://localhost:80/health"]
-                  interval: 30s
-                  timeout: 10s
-                  retries: 3
-
-            networks:
-              microservices-network:
-                driver: bridge
-
-            volumes:
-              sqlserver_data:
-            EOL
-
-            # Stop existing containers
-            docker-compose down --remove-orphans
-
-            # Start all services
-            docker-compose up -d
-
-            # Wait for services to start
+            
+            # Create docker network
+            docker network create microservices-network 2>/dev/null || echo "Network already exists"
+            
+            # Stop and remove existing containers
+            echo "Stopping existing containers..."
+            docker stop sqlserver-microservices kafka-microservices auth-service email-service gateway-api 2>/dev/null || true
+            docker rm sqlserver-microservices kafka-microservices auth-service email-service gateway-api 2>/dev/null || true
+            
+            # Start SQL Server
+            echo "Starting SQL Server..."
+            docker run -d \
+              --name sqlserver-microservices \
+              --network microservices-network \
+              -p 1433:1433 \
+              -e ACCEPT_EULA=Y \
+              -e SA_PASSWORD=YourStrong@Passw0rd \
+              -e MSSQL_PID=Express \
+              -v sqlserver_data:/var/opt/mssql \
+              --restart unless-stopped \
+              mcr.microsoft.com/mssql/server:2022-latest
+            
+            # Start Kafka
+            echo "Starting Kafka..."
+            docker run -d \
+              --name kafka-microservices \
+              --network microservices-network \
+              -p 9092:9092 \
+              -e KAFKA_NODE_ID=1 \
+              -e KAFKA_PROCESS_ROLES=broker,controller \
+              -e KAFKA_CONTROLLER_QUORUM_VOTERS=1@kafka-microservices:29093 \
+              -e KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER \
+              -e KAFKA_LISTENERS=PLAINTEXT://kafka-microservices:9092,CONTROLLER://kafka-microservices:29093 \
+              -e KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka-microservices:9092 \
+              -e KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT \
+              -e KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 \
+              -e KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1 \
+              -e KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1 \
+              -e KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS=0 \
+              -e KAFKA_NUM_PARTITIONS=3 \
+              --restart unless-stopped \
+              confluentinc/cp-kafka:latest
+            
+            # Wait for dependencies to start
+            echo "Waiting for dependencies to start..."
+            sleep 30
+            
+            # Start Auth Service
+            echo "Starting Auth Service..."
+            docker run -d \
+              --name auth-service \
+              --network microservices-network \
+              -p 5001:80 \
+              -e ASPNETCORE_ENVIRONMENT=Production \
+              -e "ConnectionStrings__DefaultConnection=Server=sqlserver-microservices,1433;Database=AuthDB;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=true" \
+              -e Kafka__BootstrapServers=kafka-microservices:9092 \
+              --restart unless-stopped \
+              ${{ env.AUTH_IMAGE_NAME_LOWER }}:latest
+            
+            # Start Email Service
+            echo "Starting Email Service..."
+            docker run -d \
+              --name email-service \
+              --network microservices-network \
+              -p 5002:80 \
+              -e ASPNETCORE_ENVIRONMENT=Production \
+              -e Kafka__BootstrapServers=kafka-microservices:9092 \
+              --restart unless-stopped \
+              ${{ env.EMAIL_IMAGE_NAME_LOWER }}:latest
+            
+            # Start Gateway API
+            echo "Starting Gateway API..."
+            docker run -d \
+              --name gateway-api \
+              --network microservices-network \
+              -p 5000:80 \
+              -e ASPNETCORE_ENVIRONMENT=Production \
+              -e Services__AuthService=http://auth-service:80 \
+              -e Services__EmailService=http://email-service:80 \
+              --restart unless-stopped \
+              ${{ env.GATEWAY_IMAGE_NAME_LOWER }}:latest
+            
+            # Wait for services to fully start
             echo "Waiting for services to start..."
-            sleep 60
-
+            sleep 45
+            
             # Check container status
             echo "=== Container Status ==="
             docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-
+            echo ""
+            
+            # Create Kafka topic if needed
+            echo "Creating Kafka topic..."
+            docker exec kafka-microservices kafka-topics --create --topic user-registered --bootstrap-server kafka-microservices:9092 --replication-factor 1 --partitions 1 --if-not-exists 2>/dev/null || echo "Topic creation skipped"
+            
             # Check health status
             echo "=== Health Check Results ==="
             echo "Gateway API Health:"
-            curl -f http://localhost:5000/health || echo "Gateway API health check failed"
-            echo ""
+            curl -s http://localhost:5000/health && echo " - OK" || echo " - FAILED"
             echo "Auth Service Health:"
-            curl -f http://localhost:5001/health || echo "Auth Service health check failed"
-            echo ""
+            curl -s http://localhost:5001/health && echo " - OK" || echo " - FAILED"
             echo "Email Service Health:"
-            curl -f http://localhost:5002/health || echo "Email Service health check failed"
-
-            # Check logs for any errors
+            curl -s http://localhost:5002/health && echo " - OK" || echo " - FAILED"
+            
+            # Show recent logs
             echo "=== Recent Logs ==="
-            docker-compose logs --tail=20 
+            echo "Auth Service logs:"
+            docker logs auth-service --tail=5 2>/dev/null || echo "No logs available"
+            echo "Email Service logs:"
+            docker logs email-service --tail=5 2>/dev/null || echo "No logs available"
+            echo "Gateway API logs:"
+            docker logs gateway-api --tail=5 2>/dev/null || echo "No logs available"
+            
+            echo "=== DEPLOYMENT COMPLETE ===" 

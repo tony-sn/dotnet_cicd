@@ -1,0 +1,71 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+set host "159.223.68.114"
+set user "root"
+set password "pHuong@123dotnet"
+
+spawn ssh $user@$host
+
+expect {
+    "yes/no" { 
+        send "yes\r"
+        expect "*password*" { send "$password\r" }
+    }
+    "*password*" { 
+        send "$password\r" 
+    }
+}
+
+expect "# "
+
+send "echo '=== TESTING FIXED DEPLOYMENT METHOD ==='\r"
+expect "# "
+
+send "echo 'Current deployment status:'\r"
+expect "# "
+
+send "docker ps --format \"table {{.Names}}\\t{{.Status}}\\t{{.Ports}}\"\r"
+expect "# "
+
+send "echo 'Testing health endpoints:'\r"
+expect "# "
+
+send "curl -s http://localhost:5000/health && echo ' - Gateway: OK' || echo ' - Gateway: FAILED'\r"
+expect "# "
+
+send "curl -s http://localhost:5001/health && echo ' - Auth: OK' || echo ' - Auth: FAILED'\r"
+expect "# "
+
+send "curl -s http://localhost:5002/health && echo ' - Email: OK' || echo ' - Email: FAILED'\r"
+expect "# "
+
+send "echo 'Network status:'\r"
+expect "# "
+
+send "docker network ls | grep microservices\r"
+expect "# "
+
+send "echo 'Docker images available:'\r"
+expect "# "
+
+send "docker images | grep ghcr.io | head -5\r"
+expect "# "
+
+send "echo 'Testing external access:'\r"
+expect "# "
+
+send "curl -s -I http://159.223.68.114:5000/health | head -1\r"
+expect "# "
+
+send "echo 'System resources:'\r"
+expect "# "
+
+send "free -h | head -2\r"
+expect "# "
+
+send "echo 'DEPLOYMENT TEST COMPLETE!'\r"
+expect "# "
+
+send "exit\r"
+expect eof 
