@@ -11,9 +11,9 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  GATEWAY_IMAGE_NAME: ${{ github.repository }}/gateway-api
-  EMAIL_IMAGE_NAME: ${{ github.repository }}/email-service
-  AUTH_IMAGE_NAME: ${{ github.repository }}/auth-service
+  GATEWAY_IMAGE_NAME: ${{ format('{0}/{1}/gateway-api', 'ghcr.io', github.repository_owner) }}
+  EMAIL_IMAGE_NAME: ${{ format('{0}/{1}/email-service', 'ghcr.io', github.repository_owner) }}
+  AUTH_IMAGE_NAME: ${{ format('{0}/{1}/auth-service', 'ghcr.io', github.repository_owner) }}
 
 jobs:
   build-and-deploy:
@@ -31,6 +31,12 @@ jobs:
         uses: actions/setup-dotnet@v3
         with:
           dotnet-version: '9.0.x'
+
+      - name: Set up Docker image names
+        run: |
+          echo "GATEWAY_IMAGE_NAME_LOWER=$(echo ${{ env.REGISTRY }}/${{ github.repository }}/gateway-api | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+          echo "EMAIL_IMAGE_NAME_LOWER=$(echo ${{ env.REGISTRY }}/${{ github.repository }}/email-service | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+          echo "AUTH_IMAGE_NAME_LOWER=$(echo ${{ env.REGISTRY }}/${{ github.repository }}/auth-service | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
 
       - name: Log in to the Container registry
         uses: docker/login-action@v3
@@ -63,19 +69,19 @@ jobs:
       - name: Build and push Docker images
         run: |
           # Build and push Gateway API
-          docker build -t ${{ env.REGISTRY }}/${{ env.GATEWAY_IMAGE_NAME }}:${{ github.sha }} -t ${{ env.REGISTRY }}/${{ env.GATEWAY_IMAGE_NAME }}:latest ./GatewayAPI
-          docker push ${{ env.REGISTRY }}/${{ env.GATEWAY_IMAGE_NAME }}:${{ github.sha }}
-          docker push ${{ env.REGISTRY }}/${{ env.GATEWAY_IMAGE_NAME }}:latest
+          docker build -t ${{ env.GATEWAY_IMAGE_NAME_LOWER }}:${{ github.sha }} -t ${{ env.GATEWAY_IMAGE_NAME_LOWER }}:latest ./GatewayAPI
+          docker push ${{ env.GATEWAY_IMAGE_NAME_LOWER }}:${{ github.sha }}
+          docker push ${{ env.GATEWAY_IMAGE_NAME_LOWER }}:latest
 
           # Build and push Email Service
-          docker build -t ${{ env.REGISTRY }}/${{ env.EMAIL_IMAGE_NAME }}:${{ github.sha }} -t ${{ env.REGISTRY }}/${{ env.EMAIL_IMAGE_NAME }}:latest ./EmailService
-          docker push ${{ env.REGISTRY }}/${{ env.EMAIL_IMAGE_NAME }}:${{ github.sha }}
-          docker push ${{ env.REGISTRY }}/${{ env.EMAIL_IMAGE_NAME }}:latest
+          docker build -t ${{ env.EMAIL_IMAGE_NAME_LOWER }}:${{ github.sha }} -t ${{ env.EMAIL_IMAGE_NAME_LOWER }}:latest ./EmailService
+          docker push ${{ env.EMAIL_IMAGE_NAME_LOWER }}:${{ github.sha }}
+          docker push ${{ env.EMAIL_IMAGE_NAME_LOWER }}:latest
 
           # Build and push Auth Service
-          docker build -t ${{ env.REGISTRY }}/${{ env.AUTH_IMAGE_NAME }}:${{ github.sha }} -t ${{ env.REGISTRY }}/${{ env.AUTH_IMAGE_NAME }}:latest ./AuthenticationService
-          docker push ${{ env.REGISTRY }}/${{ env.AUTH_IMAGE_NAME }}:${{ github.sha }}
-          docker push ${{ env.REGISTRY }}/${{ env.AUTH_IMAGE_NAME }}:latest
+          docker build -t ${{ env.AUTH_IMAGE_NAME_LOWER }}:${{ github.sha }} -t ${{ env.AUTH_IMAGE_NAME_LOWER }}:latest ./AuthenticationService
+          docker push ${{ env.AUTH_IMAGE_NAME_LOWER }}:${{ github.sha }}
+          docker push ${{ env.AUTH_IMAGE_NAME_LOWER }}:latest
 
       - name: Deploy to Digital Ocean
         uses: appleboy/ssh-action@v1.0.0
@@ -101,9 +107,9 @@ jobs:
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
             # Pull latest images
-            docker pull ${{ env.REGISTRY }}/${{ env.GATEWAY_IMAGE_NAME }}:latest
-            docker pull ${{ env.REGISTRY }}/${{ env.EMAIL_IMAGE_NAME }}:latest
-            docker pull ${{ env.REGISTRY }}/${{ env.AUTH_IMAGE_NAME }}:latest
+            docker pull ${{ env.GATEWAY_IMAGE_NAME_LOWER }}:latest
+            docker pull ${{ env.EMAIL_IMAGE_NAME_LOWER }}:latest
+            docker pull ${{ env.AUTH_IMAGE_NAME_LOWER }}:latest
 
             # Create docker-compose.yml
             cat > docker-compose.yml << 'EOL'
@@ -164,7 +170,7 @@ jobs:
                   "
 
               auth-service:
-                image: ${{ env.REGISTRY }}/${{ env.AUTH_IMAGE_NAME }}:latest
+                image: ${{ env.AUTH_IMAGE_NAME_LOWER }}:latest
                 container_name: auth-service
                 environment:
                   - ASPNETCORE_ENVIRONMENT=Production
@@ -185,7 +191,7 @@ jobs:
                   retries: 3
 
               email-service:
-                image: ${{ env.REGISTRY }}/${{ env.EMAIL_IMAGE_NAME }}:latest
+                image: ${{ env.EMAIL_IMAGE_NAME_LOWER }}:latest
                 container_name: email-service
                 environment:
                   - ASPNETCORE_ENVIRONMENT=Production
@@ -204,7 +210,7 @@ jobs:
                   retries: 3
 
               gateway-api:
-                image: ${{ env.REGISTRY }}/${{ env.GATEWAY_IMAGE_NAME }}:latest
+                image: ${{ env.GATEWAY_IMAGE_NAME_LOWER }}:latest
                 container_name: gateway-api
                 environment:
                   - ASPNETCORE_ENVIRONMENT=Production
