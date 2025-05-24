@@ -55,7 +55,9 @@ services:
       "
 
   auth-service:
-    build: ./AuthenticationService
+    build:
+      context: ./AuthenticationService
+      dockerfile: Dockerfile
     container_name: auth-service-local
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
@@ -71,7 +73,9 @@ services:
     restart: unless-stopped
 
   email-service:
-    build: ./EmailService
+    build:
+      context: ./EmailService
+      dockerfile: Dockerfile
     container_name: email-service-local
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
@@ -85,7 +89,9 @@ services:
     restart: unless-stopped
 
   gateway-api:
-    build: ./GatewayAPI
+    build:
+      context: ./GatewayAPI
+      dockerfile: Dockerfile
     container_name: gateway-api-local
     environment:
       - ASPNETCORE_ENVIRONMENT=Development

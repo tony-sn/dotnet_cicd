@@ -5,9 +5,9 @@ ENV ASPNETCORE_URLS=http://+:80
 
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
-COPY ["EmailService/EmailService.csproj", "EmailService/"]
+COPY ["EmailService.csproj", "EmailService/"]
 RUN dotnet restore "EmailService/EmailService.csproj"
-COPY . .
+COPY . ./EmailService/
 WORKDIR "/src/EmailService"
 RUN dotnet build "EmailService.csproj" -c Release -o /app/build
 

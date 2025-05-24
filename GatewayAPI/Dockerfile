@@ -5,9 +5,9 @@ ENV ASPNETCORE_URLS=http://+:80
 
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
-COPY ["GatewayAPI/GatewayAPI.csproj", "GatewayAPI/"]
+COPY ["GatewayAPI.csproj", "GatewayAPI/"]
 RUN dotnet restore "GatewayAPI/GatewayAPI.csproj"
-COPY . .
+COPY . ./GatewayAPI/
 WORKDIR "/src/GatewayAPI"
 RUN dotnet build "GatewayAPI.csproj" -c Release -o /app/build
 

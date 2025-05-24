@@ -5,9 +5,9 @@ ENV ASPNETCORE_URLS=http://+:80
 
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
-COPY ./AuthenticationService/AuthenticationService.csproj ./AuthenticationService/
+COPY ["AuthenticationService.csproj", "AuthenticationService/"]
 RUN dotnet restore "AuthenticationService/AuthenticationService.csproj"
-COPY ./AuthenticationService/. ./AuthenticationService/
+COPY . ./AuthenticationService/
 WORKDIR "/src/AuthenticationService"
 RUN dotnet build "AuthenticationService.csproj" -c Release -o /app/build
 
