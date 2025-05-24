@@ -97,10 +97,10 @@ jobs:
             # Login to GitHub Container Registry
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             
-            # Stop and remove existing containers
-            echo "Stopping existing containers..."
-            docker stop sqlserver-microservices kafka-microservices auth-service email-service gateway-api 2>/dev/null || true
-            docker rm sqlserver-microservices kafka-microservices auth-service email-service gateway-api 2>/dev/null || true
+            # Stop and remove existing microservice containers only
+            echo "Stopping existing microservice containers..."
+            docker stop auth-service email-service gateway-api 2>/dev/null || true
+            docker rm auth-service email-service gateway-api 2>/dev/null || true
             
             # Remove old microservice images to ensure fresh deployment
             echo "Removing old microservice images..."
@@ -117,43 +117,55 @@ jobs:
             # Create docker network
             docker network create microservices-network 2>/dev/null || echo "Network already exists"
             
-            # Start SQL Server
-            echo "Starting SQL Server..."
-            docker run -d \
-              --name sqlserver-microservices \
-              --network microservices-network \
-              -p 1433:1433 \
-              -e ACCEPT_EULA=Y \
-              -e SA_PASSWORD=YourStrong@Passw0rd \
-              -e MSSQL_PID=Express \
-              -v sqlserver_data:/var/opt/mssql \
-              --restart unless-stopped \
-              mcr.microsoft.com/mssql/server:2022-latest
+            # Start SQL Server if not running
+            if ! docker ps | grep -q sqlserver-microservices; then
+                echo "Starting SQL Server..."
+                docker run -d \
+                  --name sqlserver-microservices \
+                  --network microservices-network \
+                  -p 1433:1433 \
+                  -e ACCEPT_EULA=Y \
+                  -e SA_PASSWORD=YourStrong@Passw0rd \
+                  -e MSSQL_PID=Express \
+                  -v sqlserver_data:/var/opt/mssql \
+                  --restart unless-stopped \
+                  mcr.microsoft.com/mssql/server:2022-latest
+                echo "Waiting for SQL Server to start..."
+                sleep 15
+            else
+                echo "SQL Server already running"
+                # Ensure SQL Server is connected to network
+                docker network connect microservices-network sqlserver-microservices 2>/dev/null || echo "SQL Server already on network"
+            fi
             
-            # Start Kafka
-            echo "Starting Kafka..."
-            docker run -d \
-              --name kafka-microservices \
-              --network microservices-network \
-              -p 9092:9092 \
-              -e KAFKA_NODE_ID=1 \
-              -e KAFKA_PROCESS_ROLES=broker,controller \
-              -e KAFKA_CONTROLLER_QUORUM_VOTERS=1@kafka-microservices:29093 \
-              -e KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER \
-              -e KAFKA_LISTENERS=PLAINTEXT://kafka-microservices:9092,CONTROLLER://kafka-microservices:29093 \
-              -e KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka-microservices:9092 \
-              -e KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT \
-              -e KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 \
-              -e KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1 \
-              -e KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1 \
-              -e KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS=0 \
-              -e KAFKA_NUM_PARTITIONS=3 \
-              --restart unless-stopped \
-              confluentinc/cp-kafka:latest
-            
-            # Wait for dependencies to start
-            echo "Waiting for dependencies to start..."
-            sleep 30
+            # Start Kafka if not running
+            if ! docker ps | grep -q kafka-microservices; then
+                echo "Starting Kafka..."
+                docker run -d \
+                  --name kafka-microservices \
+                  --network microservices-network \
+                  -p 9092:9092 \
+                  -e KAFKA_NODE_ID=1 \
+                  -e KAFKA_PROCESS_ROLES=broker,controller \
+                  -e KAFKA_CONTROLLER_QUORUM_VOTERS=1@kafka-microservices:29093 \
+                  -e KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER \
+                  -e KAFKA_LISTENERS=PLAINTEXT://kafka-microservices:9092,CONTROLLER://kafka-microservices:29093 \
+                  -e KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka-microservices:9092 \
+                  -e KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT \
+                  -e KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 \
+                  -e KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1 \
+                  -e KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1 \
+                  -e KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS=0 \
+                  -e KAFKA_NUM_PARTITIONS=3 \
+                  --restart unless-stopped \
+                  confluentinc/cp-kafka:latest
+                echo "Waiting for Kafka to start..."
+                sleep 30
+            else
+                echo "Kafka already running"
+                # Ensure Kafka is connected to network
+                docker network connect microservices-network kafka-microservices 2>/dev/null || echo "Kafka already on network"
+            fi
             
             # Start Auth Service
             echo "Starting Auth Service..."
