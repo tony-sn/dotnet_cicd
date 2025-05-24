@@ -112,32 +112,37 @@ jobs:
             
             # Start Kafka if not running for this environment
             if ! docker ps | grep -q kafka-microservices${{ env.CONTAINER_SUFFIX }}; then
-                echo "Starting Kafka for ${{ github.event.inputs.environment }}..."
+                echo "Starting Kafka with fixed configuration for ${{ github.event.inputs.environment }}..."
                 docker run -d \
                   --name kafka-microservices${{ env.CONTAINER_SUFFIX }} \
                   --network ${{ env.NETWORK_NAME }} \
                   -p ${{ env.KAFKA_PORT }}:9092 \
                   -e KAFKA_NODE_ID=1 \
                   -e KAFKA_PROCESS_ROLES=broker,controller \
-                  -e KAFKA_CONTROLLER_QUORUM_VOTERS=1@kafka-microservices${{ env.CONTAINER_SUFFIX }}:29093 \
+                  -e KAFKA_CONTROLLER_QUORUM_VOTERS=1@localhost:29093 \
                   -e KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER \
-                  -e KAFKA_LISTENERS=PLAINTEXT://kafka-microservices${{ env.CONTAINER_SUFFIX }}:9092,CONTROLLER://kafka-microservices${{ env.CONTAINER_SUFFIX }}:29093 \
+                  -e KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:29093 \
                   -e KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka-microservices${{ env.CONTAINER_SUFFIX }}:9092 \
                   -e KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT \
                   -e KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 \
                   -e KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1 \
                   -e KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1 \
                   -e KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS=0 \
-                  -e KAFKA_NUM_PARTITIONS=3 \
+                  -e CLUSTER_ID=MkU3OEVBNTcwNTJENDM2Qk \
                   --restart unless-stopped \
                   confluentinc/cp-kafka:latest
                 echo "Waiting for Kafka to start..."
-                sleep 30
+                sleep 45
             else
                 echo "Kafka already running for ${{ github.event.inputs.environment }}"
                 # Ensure Kafka is connected to network
                 docker network connect ${{ env.NETWORK_NAME }} kafka-microservices${{ env.CONTAINER_SUFFIX }} 2>/dev/null || echo "Kafka already on network"
             fi
+            
+            # Add all containers to network to ensure connectivity
+            echo "Ensuring all containers are on ${{ env.NETWORK_NAME }} network..."
+            docker network connect ${{ env.NETWORK_NAME }} sqlserver-microservices${{ env.CONTAINER_SUFFIX }} 2>/dev/null || echo "SQL Server already on network"
+            docker network connect ${{ env.NETWORK_NAME }} kafka-microservices${{ env.CONTAINER_SUFFIX }} 2>/dev/null || echo "Kafka already on network"
             
             # Start Auth Service
             echo "Starting Auth Service for ${{ github.event.inputs.environment }}..."
@@ -179,6 +184,16 @@ jobs:
             echo "Waiting for services to start..."
             sleep 45
             
+            # Ensure all microservices are on the network after startup
+            echo "Final network connectivity check for ${{ github.event.inputs.environment }}..."
+            docker network connect ${{ env.NETWORK_NAME }} auth-service${{ env.CONTAINER_SUFFIX }} 2>/dev/null || echo "Auth Service already on network"
+            docker network connect ${{ env.NETWORK_NAME }} email-service${{ env.CONTAINER_SUFFIX }} 2>/dev/null || echo "Email Service already on network"
+            docker network connect ${{ env.NETWORK_NAME }} gateway-api${{ env.CONTAINER_SUFFIX }} 2>/dev/null || echo "Gateway API already on network"
+            
+            # Wait for Kafka to be ready before creating topics
+            echo "Waiting for Kafka to be fully ready..."
+            sleep 15
+            
             # Check container status
             echo "=== Container Status for ${{ github.event.inputs.environment }} ==="
             docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep "${{ env.CONTAINER_SUFFIX }}\|NAMES"
@@ -186,7 +201,11 @@ jobs:
             
             # Create Kafka topic if needed
             echo "Creating Kafka topic..."
-            docker exec kafka-microservices${{ env.CONTAINER_SUFFIX }} kafka-topics --create --topic user-registered --bootstrap-server kafka-microservices${{ env.CONTAINER_SUFFIX }}:9092 --replication-factor 1 --partitions 1 --if-not-exists 2>/dev/null || echo "Topic creation skipped"
+            docker exec kafka-microservices${{ env.CONTAINER_SUFFIX }} kafka-topics --create --topic user-registered --bootstrap-server localhost:9092 --replication-factor 1 --partitions 1 --if-not-exists 2>/dev/null || echo "Topic creation skipped"
+            
+            # Verify topic was created
+            echo "Verifying Kafka topic exists..."
+            docker exec kafka-microservices${{ env.CONTAINER_SUFFIX }} kafka-topics --list --bootstrap-server localhost:9092 2>/dev/null | grep user-registered && echo "Topic verified" || echo "Topic verification failed"
             
             # Check health status
             echo "=== Health Check Results for ${{ github.event.inputs.environment }} ==="

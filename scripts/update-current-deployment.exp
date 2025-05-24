@@ -1,0 +1,164 @@
+#!/usr/bin/expect -f
+
+set timeout 180
+set host "159.223.68.114"
+set user "root"
+set password "pHuong@123dotnet"
+
+spawn ssh $user@$host
+
+expect {
+    "yes/no" { 
+        send "yes\r"
+        expect "*password*" { send "$password\r" }
+    }
+    "*password*" { 
+        send "$password\r" 
+    }
+}
+
+expect "# "
+
+send "echo '=== UPDATING CURRENT DEPLOYMENT WITH FIXES ==='\r"
+expect "# "
+
+send "echo 'Current running containers:'\r"
+expect "# "
+
+send "docker ps --format 'table {{.Names}}\\t{{.Status}}\\t{{.Ports}}'\r"
+expect "# "
+
+send "echo 'Stopping broken Kafka...'\r"
+expect "# "
+
+send "docker stop kafka-microservices 2>/dev/null || echo 'Kafka already stopped'\r"
+expect "# "
+
+send "docker rm kafka-microservices 2>/dev/null || echo 'Kafka container removed'\r"
+expect "# "
+
+send "echo 'Starting Kafka with fixed configuration...'\r"
+expect "# "
+
+send "docker run -d --name kafka-microservices --network microservices-network -p 9092:9092 -e KAFKA_NODE_ID=1 -e KAFKA_PROCESS_ROLES=broker,controller -e KAFKA_CONTROLLER_QUORUM_VOTERS=1@localhost:29093 -e KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER -e KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:29093 -e KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka-microservices:9092 -e KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT -e KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 -e KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1 -e KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1 -e KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS=0 -e CLUSTER_ID=MkU3OEVBNTcwNTJENDM2Qk --restart unless-stopped confluentinc/cp-kafka:latest\r"
+expect "# "
+
+send "echo 'Waiting for Kafka to start (45 seconds)...'\r"
+expect "# "
+
+send "sleep 45\r"
+expect "# "
+
+send "echo 'Ensuring all containers are on network...'\r"
+expect "# "
+
+send "docker network connect microservices-network sqlserver2022 2>/dev/null || echo 'SQL Server already on network'\r"
+expect "# "
+
+send "docker network connect microservices-network kafka-microservices 2>/dev/null || echo 'Kafka already on network'\r"
+expect "# "
+
+send "docker network connect microservices-network auth-service 2>/dev/null || echo 'Auth already on network'\r"
+expect "# "
+
+send "docker network connect microservices-network email-service 2>/dev/null || echo 'Email already on network'\r"
+expect "# "
+
+send "docker network connect microservices-network gateway-api 2>/dev/null || echo 'Gateway already on network'\r"
+expect "# "
+
+send "echo 'Creating Kafka topic...'\r"
+expect "# "
+
+send "docker exec kafka-microservices kafka-topics --create --topic user-registered --bootstrap-server localhost:9092 --replication-factor 1 --partitions 1 --if-not-exists 2>/dev/null || echo 'Topic creation failed'\r"
+expect "# "
+
+send "echo 'Verifying topic:'\r"
+expect "# "
+
+send "docker exec kafka-microservices kafka-topics --list --bootstrap-server localhost:9092 2>/dev/null | grep user-registered && echo 'Topic verified' || echo 'Topic not found'\r"
+expect "# "
+
+send "echo 'Restarting microservices to refresh connections...'\r"
+expect "# "
+
+send "docker restart auth-service email-service gateway-api\r"
+expect "# "
+
+send "sleep 30\r"
+expect "# "
+
+send "echo 'Re-adding services to network after restart...'\r"
+expect "# "
+
+send "docker network connect microservices-network auth-service 2>/dev/null || echo 'Auth already on network'\r"
+expect "# "
+
+send "docker network connect microservices-network email-service 2>/dev/null || echo 'Email already on network'\r"
+expect "# "
+
+send "docker network connect microservices-network gateway-api 2>/dev/null || echo 'Gateway already on network'\r"
+expect "# "
+
+send "echo 'Final container status:'\r"
+expect "# "
+
+send "docker ps --format 'table {{.Names}}\\t{{.Status}}\\t{{.Ports}}'\r"
+expect "# "
+
+send "echo 'Testing all services:'\r"
+expect "# "
+
+send "curl -s http://localhost:5001/health && echo ' - Auth Service OK'\r"
+expect "# "
+
+send "curl -s http://localhost:5002/health && echo ' - Email Service OK'\r"
+expect "# "
+
+send "curl -s http://localhost:5000/health && echo ' - Gateway API OK'\r"
+expect "# "
+
+send "echo 'Testing Swagger UI:'\r"
+expect "# "
+
+send "curl -s http://localhost:5001/swagger/v1/swagger.json | head -1 && echo ' - Swagger JSON OK'\r"
+expect "# "
+
+send "curl -s http://localhost:5001/api/auth/ping && echo ' - Auth API OK'\r"
+expect "# "
+
+send "echo 'Checking logs for errors:'\r"
+expect "# "
+
+send "docker logs auth-service --tail=10 | grep -E '(ERROR|Exception|Kafka)' || echo 'No errors in auth service'\r"
+expect "# "
+
+send "docker logs email-service --tail=10 | grep -E '(ERROR|Exception|Kafka)' || echo 'No errors in email service'\r"
+expect "# "
+
+send "echo 'Network inspection:'\r"
+expect "# "
+
+send "docker network inspect microservices-network | grep -A3 '\"Name\"' | head -15\r"
+expect "# "
+
+send "echo '=== DEPLOYMENT UPDATE COMPLETE! ==='\r"
+expect "# "
+
+send "echo '=== ACCESS URLS ==='\r"
+expect "# "
+
+send "echo 'Gateway API: http://159.223.68.114:5000/health'\r"
+expect "# "
+
+send "echo 'Auth Service: http://159.223.68.114:5001/health'\r"
+expect "# "
+
+send "echo 'Swagger UI: http://159.223.68.114:5001/swagger'\r"
+expect "# "
+
+send "echo 'Email Service: http://159.223.68.114:5002/health'\r"
+expect "# "
+
+send "exit\r"
+expect eof 
