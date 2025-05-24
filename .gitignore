@@ -13,6 +13,7 @@ obj/
 .vscode/
 .idea/
 
+
 # Rider
 .idea/
 *.sln.iml
