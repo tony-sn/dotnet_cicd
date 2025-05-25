@@ -56,7 +56,7 @@ namespace AuthenticationService.Controller {
         /// <response code="200">Login successful</response>
         /// <response code="401">Invalid credentials</response>
         /// <response code="400">Invalid request</response>
-        [HttpPost("login")]
+        [HttpPost("login-test")]
         [SwaggerOperation(
             Summary = "User login",
             Description = "Authenticates user credentials and returns access token"
