@@ -1,314 +1,302 @@
-# Microservices CI/CD Project
+# .NET Microservices CI/CD Project
 
-## Tổng quan
+## 🚀 **Project Overview**
 
-Project này bao gồm 3 microservices chính:
-- **GatewayAPI**: API Gateway sử dụng YARP Reverse Proxy
-- **AuthenticationService**: Service xử lý authentication với Entity Framework Core và SQL Server
-- **EmailService**: Service gửi email với Kafka consumer
+Complete CI/CD solution cho .NET 9.0 microservices architecture với:
+- **AuthenticationService**: JWT authentication + Swagger UI
+- **EmailService**: Email processing với Kafka messaging  
+- **GatewayAPI**: YARP reverse proxy + API routing
+- **Infrastructure**: SQL Server 2022, Kafka KRaft mode, Docker networking
 
-## Kiến trúc
+## 📋 **Tech Stack**
+
+- **.NET 9.0**: Latest framework cho performance tối ưu
+- **Docker**: Containerization với multi-stage builds
+- **GitHub Actions**: CI/CD automation
+- **GitHub Container Registry**: Docker image storage
+- **SQL Server 2022**: Database với Entity Framework Core
+- **Apache Kafka**: Event streaming (KRaft mode - no Zookeeper)
+- **YARP**: Reverse proxy cho API Gateway
+- **Swagger/OpenAPI**: API documentation
+- **DigitalOcean**: Production hosting
+
+## 🏗️ **Architecture Diagram**
 
 ```
-┌─────────────────┐    ┌──────────────────────┐    ┌─────────────────────┐
-│   Gateway API   │───▶│ Authentication Service │───▶│   SQL Server 2022   │
-│    (Port 5000)  │    │     (Port 5001)       │    │    (Port 1433)      │
-└─────────────────┘    └──────────────────────┘    └─────────────────────┘
-         │                        │
-         │                        │ Kafka Producer
-         ▼                        ▼
-┌─────────────────┐    ┌──────────────────────┐
-│  Email Service  │◀───│   Kafka (KRaft)     │
-│   (Port 5002)   │    │    (Port 9092)      │
-└─────────────────┘    └──────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                    External Traffic                         │
+└─────────────────────┬───────────────────────────────────────┘
+                      │
+              ┌───────▼───────┐
+              │ Gateway API   │ :5000
+              │ (YARP Proxy)  │
+              └───────┬───────┘
+                      │
+        ┌─────────────┼─────────────┐
+        │             │             │
+┌───────▼───────┐     │     ┌───────▼───────┐
+│ Auth Service  │     │     │ Email Service │
+│ :5001         │     │     │ :5002         │
+│ + Swagger UI  │     │     │               │
+└───────┬───────┘     │     └───────┬───────┘
+        │             │             │
+        │    ┌────────▼────────┐    │
+        │    │ microservices-  │    │
+        │    │    network      │    │
+        │    └────────┬────────┘    │
+        │             │             │
+        │   ┌─────────▼─────────┐   │
+        └───► SQL Server 2022  ◄───┘
+            │ :1433             │
+            └─────────┬─────────┘
+                      │
+            ┌─────────▼─────────┐
+            │ Kafka KRaft      │
+            │ :9092            │
+            │ Topic: user-     │
+            │ registered       │
+            └──────────────────┘
 ```
 
-## Thiết lập GitHub Secrets
+## 🔧 **Setup & Deployment**
 
-Trước khi chạy CI/CD, bạn cần thiết lập các secrets sau trong GitHub repository:
+### **1. Prerequisites**
+```bash
+# Local Development
+- .NET 9.0 SDK
+- Docker Desktop
+- Git
 
-1. Vào **Settings** → **Secrets and variables** → **Actions**
-2. Tạo các **Repository secrets** sau:
+# Production Server (DigitalOcean)
+- Ubuntu 22.04
+- Docker installed
+- SSH access
+```
 
-| Secret Name | Value | Mô tả |
-|-------------|-------|-------|
-| `DIGITALOCEAN_HOST` | `159.223.68.114` | IP server của bạn |
-| `DIGITALOCEAN_USERNAME` | `root` | Username để SSH |
-| `DIGITALOCEAN_PASSWORD` | `pHuong@123dotnet` | Password SSH |
+### **2. GitHub Repository Setup**
 
-## Thiết lập Server
+1. **Clone repository**:
+   ```bash
+   git clone <repository-url>
+   cd dotnet_cicd
+   ```
 
-### Cách 1: Sử dụng script tự động
+2. **Configure GitHub Secrets**:
+   ```
+   DIGITALOCEAN_HOST=159.223.68.114
+   DIGITALOCEAN_USERNAME=root  
+   DIGITALOCEAN_PASSWORD=your-password
+   ```
+
+3. **Container Registry**:
+   - GitHub Container Registry (GHCR) tự động enabled
+   - Images: `ghcr.io/[owner]/[service]:latest`
+
+### **3. Local Development**
 
 ```bash
-# Chạy script setup trên server
-wget https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/scripts/setup-server.sh
-chmod +x setup-server.sh
-sudo ./setup-server.sh
-```
+# Build services
+dotnet restore
+dotnet build
 
-### Cách 2: Thiết lập thủ công
-
-```bash
-# Cập nhật hệ thống
-sudo apt update && sudo apt upgrade -y
-
-# Cài đặt Docker
-curl -fsSL https://get.docker.com -o get-docker.sh
-sudo sh get-docker.sh
-sudo usermod -aG docker $USER
-
-# Cài đặt Docker Compose
-sudo curl -L "https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-sudo chmod +x /usr/local/bin/docker-compose
-
-# Tạo thư mục deployment
-sudo mkdir -p /deployments/microservices
-sudo chown -R $USER:$USER /deployments
-```
-
-## CI/CD Workflows
-
-### 1. Main Branch CI/CD (`main-cicd.yml`)
-
-**Trigger**: Khi có push hoặc merge PR vào branch `main`
-
-**Các bước**:
-1. Build và test tất cả services
-2. Build và push Docker images lên GitHub Container Registry
-3. Deploy lên server production với:
-   - Tạo network `microservices-network` nếu chưa có
-   - Deploy SQL Server 2022
-   - Deploy Kafka (KRaft mode - không cần Zookeeper)
-   - Tạo Kafka topic `user-registered`
-   - Deploy tất cả microservices
-   - Chạy health checks
-
-**Ports sử dụng (Production)**:
-- Gateway API: `5000`
-- Auth Service: `5001`  
-- Email Service: `5002`
-- SQL Server: `1433`
-- Kafka: `9092`
-
-### 2. Manual Deployment (`manual-deploy.yml`)
-
-**Trigger**: Workflow dispatch (chạy thủ công)
-
-**Tùy chọn**:
-- Environment: `staging` hoặc `production`
-
-**Đặc điểm**:
-- Staging sử dụng ports khác nhau để tránh conflict
-- Mỗi branch có containers riêng biệt
-- Có thể deploy nhiều versions song song
-
-**Ports sử dụng (Staging)**:
-- Gateway API: `6000`
-- Auth Service: `6001`
-- Email Service: `6002`
-- SQL Server: `1434`
-- Kafka: `9093`
-
-## Cách sử dụng
-
-### 1. Development Local
-
-```bash
-# Clone repository
-git clone https://github.com/YOUR_USERNAME/YOUR_REPO.git
-cd dotnet_cicd
-
-# Chạy từng service (cần .NET 9.0)
-dotnet run --project AuthenticationService
-dotnet run --project EmailService  
-dotnet run --project GatewayAPI
-```
-
-### 2. Docker Compose Local
-
-```bash
-# Build images
-docker-compose build
-
-# Chạy tất cả services
+# Run with Docker Compose (optional)
 docker-compose up -d
 
-# Kiểm tra logs
-docker-compose logs -f
+# Access services
+- Gateway: http://localhost:5000/health
+- Auth: http://localhost:5001/health
+- Auth Swagger: http://localhost:5001/swagger
+- Email: http://localhost:5002/health
 ```
 
-### 3. Production Deployment
+### **4. Production Deployment**
 
-**Tự động (Recommended)**:
-- Push code lên branch `main` → Tự động deploy
-
-**Thủ công**:
-- Vào GitHub Actions → Chọn "Manual Branch Deployment" → Run workflow
-
-## Health Checks
-
-Sau khi deploy, bạn có thể kiểm tra health của các services:
-
+#### **Automatic Deployment**
 ```bash
-# Gateway API
-curl http://159.223.68.114:5000/health
+# Push to main branch triggers CI/CD
+git push origin main
 
-# Auth Service  
-curl http://159.223.68.114:5001/health
-
-# Email Service
-curl http://159.223.68.114:5002/health
+# Or merge Pull Request
 ```
 
-## API Endpoints
-
-### Gateway API (Port 5000)
-- `GET /health` - Health check
-- `POST /api/auth/register` - User registration (proxy to Auth Service)
-- `POST /api/email/welcome` - Send welcome email (proxy to Email Service)
-
-### Auth Service (Port 5001)
-- `GET /health` - Health check  
-- `POST /api/auth/register` - User registration
-
-### Email Service (Port 5002)
-- `GET /health` - Health check
-- `POST /api/email/welcome` - Send welcome email
-
-## Database & Messaging
-
-### SQL Server
-- **Host**: `159.223.68.114:1433`
-- **Database**: `AuthDB`
-- **User**: `sa`
-- **Password**: `YourStrong@Passw0rd`
-
-### Kafka (KRaft Mode)
-- **Bootstrap Server**: `159.223.68.114:9092`
-- **Topic**: `user-registered`
-- **Mode**: KRaft (không cần Zookeeper)
-
-## Troubleshooting
-
-### 1. Kiểm tra container status
+#### **Manual Deployment**
 ```bash
-docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+# Via GitHub Actions UI
+- Go to Actions tab
+- Select "Manual Deployment" 
+- Choose environment: production/staging
+- Run workflow
 ```
 
-### 2. Xem logs
+#### **Quick Fix Deployment**
 ```bash
-# Tất cả services
-docker-compose logs -f
-
-# Service cụ thể
-docker logs auth-service
-docker logs email-service
-docker logs gateway-api
-docker logs kafka-microservices
+# Apply fixes to current deployment
+expect scripts/update-current-deployment.exp
 ```
 
-### 3. Kiểm tra network
+## 📊 **CI/CD Pipeline Flow**
+
+```mermaid
+graph LR
+    A[Code Push] --> B[Build & Test]
+    B --> C[Docker Build]
+    C --> D[Push to GHCR]
+    D --> E[SSH to Server]
+    E --> F[Stop Services]
+    F --> G[Pull Images]
+    G --> H[Start Infrastructure]
+    H --> I[Start Services]
+    I --> J[Health Checks]
+    J --> K[Complete]
+```
+
+## 🌐 **Production URLs**
+
+- **Gateway API**: http://159.223.68.114:5000
+- **Auth Service**: http://159.223.68.114:5001  
+- **Auth Swagger UI**: http://159.223.68.114:5001/swagger
+- **Email Service**: http://159.223.68.114:5002
+
+## 📁 **Project Structure**
+
+```
+dotnet_cicd/
+├── AuthenticationService/          # JWT Auth + Swagger
+│   ├── Controllers/
+│   ├── Models/
+│   ├── Program.cs
+│   └── Dockerfile
+├── EmailService/                   # Kafka Email Processing
+│   ├── Controllers/
+│   ├── Services/
+│   ├── Program.cs
+│   └── Dockerfile
+├── GatewayAPI/                     # YARP Reverse Proxy
+│   ├── Program.cs
+│   ├── appsettings.json
+│   └── Dockerfile
+├── .github/workflows/              # CI/CD Pipelines
+│   ├── main-cicd.yml
+│   └── manual-deploy.yml
+├── scripts/                        # Deployment Scripts
+│   ├── update-current-deployment.exp
+│   ├── kafka-simple-fix.exp
+│   └── kafka-complete-fix.exp
+└── docs/                          # Documentation
+    └── CICD-Analysis.md           # Detailed line-by-line analysis
+```
+
+## 🔍 **Detailed Analysis**
+
+📖 **[Complete CI/CD Analysis](./docs/CICD-Analysis.md)** - Chi tiết phân tích từng line code của pipeline
+
+## 🚀 **Key Features**
+
+### **🔐 Security**
+- GitHub Container Registry với automatic tokens
+- Environment-based Swagger enabling
+- Secure credential management với GitHub Secrets
+- Production-grade password handling
+
+### **🏗️ Infrastructure**
+- **Persistence Strategy**: SQL + Kafka persist qua deployments
+- **Network Reliability**: Shared Docker network với connectivity fixes  
+- **Service Discovery**: Container name-based resolution
+- **Health Monitoring**: Comprehensive endpoint checking
+
+### **⚡ Performance**
+- **Multi-stage Docker builds** cho optimized images
+- **Infrastructure reuse** cho faster deployments
+- **Parallel service startup** với dependency management
+- **Image cleanup** cho disk space management
+
+### **🔄 Reliability**
+- **Idempotent operations** cho repeatable deployments
+- **Health-check driven** validation
+- **Network connectivity fixes** cho service communication
+- **Comprehensive logging** cho troubleshooting
+
+## 🛠️ **Development Workflow**
+
+1. **Feature Development**:
+   ```bash
+   git checkout -b feature/new-feature
+   # Make changes
+   git commit -m "feat: add new feature"
+   git push origin feature/new-feature
+   ```
+
+2. **Pull Request**:
+   - Create PR to main branch
+   - Code review process
+   - Merge triggers automatic deployment
+
+3. **Production Monitoring**:
+   - Health endpoints: `/health`
+   - Swagger documentation: `/swagger`
+   - Service logs: `docker logs [service-name]`
+
+## 🔧 **Troubleshooting**
+
+### **Common Issues**
+
+1. **Kafka Connection Issues**:
+   ```bash
+   expect scripts/kafka-simple-fix.exp
+   ```
+
+2. **Network Connectivity**:
+   ```bash
+   expect scripts/update-current-deployment.exp
+   ```
+
+3. **Service Health Check**:
+   ```bash
+   curl http://159.223.68.114:5001/health
+   curl http://159.223.68.114:5001/swagger
+   ```
+
+### **Debug Commands**
 ```bash
-docker network ls
+# SSH to server
+ssh root@159.223.68.114
+
+# Check containers
+docker ps
+docker logs [container-name]
+
+# Check network
 docker network inspect microservices-network
-```
 
-### 4. Restart services
-```bash
-cd /deployments/microservices
-docker-compose restart
-```
-
-### 5. Rebuild và redeploy
-```bash
-cd /deployments/microservices
-docker-compose down
-docker-compose pull
-docker-compose up -d
-```
-
-### 6. Kiểm tra Kafka topics
-```bash
-# List topics
+# Check Kafka topics
 docker exec kafka-microservices kafka-topics --list --bootstrap-server localhost:9092
-
-# Describe topic
-docker exec kafka-microservices kafka-topics --describe --topic user-registered --bootstrap-server localhost:9092
-
-# Test producer
-docker exec kafka-microservices kafka-console-producer --topic user-registered --bootstrap-server localhost:9092
-
-# Test consumer
-docker exec kafka-microservices kafka-console-consumer --topic user-registered --bootstrap-server localhost:9092 --from-beginning
 ```
 
-## Monitoring
+## 📈 **Monitoring & Metrics**
 
-### Container Stats
-```bash
-docker stats
-```
+- **Health Endpoints**: All services có `/health` endpoint
+- **Swagger Documentation**: Auth service có comprehensive API docs
+- **Container Status**: Real-time via `docker ps`
+- **Network Connectivity**: Service-to-service communication monitoring
+- **Kafka Topics**: Message flow tracking
 
-### Disk Usage
-```bash
-docker system df
-docker system prune -f  # Cleanup unused resources
-```
+## 🎯 **Production Ready**
 
-### Network Connectivity
-```bash
-# Test inter-service communication
-docker exec gateway-api curl http://auth-service:80/health
-docker exec auth-service curl http://email-service:80/health
-```
+✅ **Multi-environment support** (production/staging)  
+✅ **Automated CI/CD** với GitHub Actions  
+✅ **Container orchestration** với Docker  
+✅ **Service mesh** với shared networking  
+✅ **Message queuing** với Kafka  
+✅ **API documentation** với Swagger  
+✅ **Health monitoring** & validation  
+✅ **Security** best practices  
+✅ **Infrastructure persistence**  
+✅ **Comprehensive logging**  
 
-## Security Notes
+---
 
-- Passwords trong production nên sử dụng environment variables
-- Nên enable HTTPS cho production
-- Cân nhắc sử dụng Docker secrets cho sensitive data
-- Firewall chỉ mở các ports cần thiết
-
-## Technology Stack
-
-- **.NET 9.0** - Application framework
-- **Entity Framework Core** - ORM
-- **SQL Server 2022** - Database
-- **Apache Kafka (KRaft)** - Message broker (standalone mode)
-- **YARP** - Reverse proxy
-- **Docker & Docker Compose** - Containerization
-- **GitHub Actions** - CI/CD pipeline
-- **GitHub Container Registry** - Docker image registry
-
-## Kafka KRaft Mode
-
-Project này sử dụng Kafka KRaft mode (Kafka Raft), đây là architecture mới của Kafka từ phiên bản 2.8+ không cần Zookeeper:
-
-### Ưu điểm:
-- **Đơn giản hóa deployment**: Chỉ cần 1 container thay vì 2 (Kafka + Zookeeper)
-- **Hiệu suất tốt hơn**: Ít overhead, khởi động nhanh hơn
-- **Quản lý dễ dàng**: Ít components cần monitor và maintain
-
-### Cấu hình KRaft:
-```yaml
-environment:
-  KAFKA_NODE_ID: 1
-  KAFKA_PROCESS_ROLES: broker,controller
-  KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
-  KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-  KAFKA_LISTENERS: PLAINTEXT://kafka:9092,CONTROLLER://kafka:29093
-  KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-```
-
-## Contributing
-
-1. Fork repository
-2. Tạo feature branch: `git checkout -b feature/new-feature`
-3. Commit changes: `git commit -am 'Add new feature'`
-4. Push branch: `git push origin feature/new-feature`
-5. Tạo Pull Request
-
-## License
-
-This project is licensed under the MIT License. 
+**🔗 Links:**
+- [Detailed CI/CD Analysis](./docs/CICD-Analysis.md)
+- [Gateway API](http://159.223.68.114:5000)
+- [Auth Service + Swagger](http://159.223.68.114:5001/swagger)
+- [Email Service](http://159.223.68.114:5002) 
